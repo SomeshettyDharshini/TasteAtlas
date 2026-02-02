@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tasteatlas-deployment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tasteatlas
+  template:
+    metadata:
+      labels:
+        app: tasteatlas
+    spec:
+      containers:
+      - name: tasteatlas
+        image: someshettydharshini/tasteatlas:latest
+        ports:
+        - containerPort: 80
