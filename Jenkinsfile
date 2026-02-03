@@ -5,7 +5,6 @@ pipeline {
         DOCKERHUB_USERNAME = "someshettydharshini"
         IMAGE_NAME = "tasteatlas"
         IMAGE_TAG = "latest"
-        CONTAINER_NAME = "tasteatlas-container"
     }
 
     stages {
@@ -23,48 +22,24 @@ pipeline {
             }
         }
 
-        stage('Login to DockerHub') {
+        stage('Tag Docker Image') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-credentials',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_PASS'
-                )]) {
-
-                    sh """
-                    echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
-                    """
-                }
+                echo "Tagging Docker Image..."
+                sh "docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}"
             }
         }
 
-        stage('Push Image to DockerHub') {
+        stage('Push Docker Image') {
             steps {
-                echo "Pushing image to DockerHub..."
-
-                sh """
-                docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}
-                docker push ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}
-                """
-            }
-        }
-
-        stage('Deploy Container Locally') {
-            steps {
-                echo "Running Docker Container..."
-
-                sh """
-                docker stop ${CONTAINER_NAME} || true
-                docker rm ${CONTAINER_NAME} || true
-                docker run -d -p 8080:80 --name ${CONTAINER_NAME} ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}
-                """
+                echo "Pushing Image to DockerHub..."
+                sh "docker push ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}"
             }
         }
     }
 
     post {
         success {
-            echo "Application deployed successfully on port 8080 🎉"
+            echo "Docker Image pushed successfully 🎉"
         }
         failure {
             echo "Pipeline failed ❌ Check logs"
