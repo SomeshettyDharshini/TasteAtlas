@@ -2,64 +2,72 @@ pipeline {
     agent any
 
     environment {
-        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')  // Docker Hub credentials
-        IMAGE_NAME = "someshettydharshini/tasteatlas"           // Docker Hub image name
-        KUBE_CONFIG = "/home/jenkins/.kube/config"             // Path to kubeconfig on Jenkins server
+        DOCKERHUB_USERNAME = "someshettydharshini"
+        IMAGE_NAME = "tasteatlas"
+        IMAGE_TAG = "latest"
+        CONTAINER_NAME = "tasteatlas-container"
     }
 
     stages {
+
         stage('Checkout Code') {
             steps {
-                // Pull code from GitHub
-                git branch: 'main', url: 'https://github.com/someshettydharshini/tasteatlas.git'
+                checkout scm
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    // Build Docker image
-                    sh "docker build -t ${IMAGE_NAME}:latest ."
-                }
+                echo "Building Docker Image..."
+                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
             }
         }
 
-        stage('Push Docker Image') {
+        stage('Login to DockerHub') {
             steps {
-                script {
-                    // Login to Docker Hub and push image
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-credentials',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+
                     sh """
-                    echo ${DOCKERHUB_CREDENTIALS_PSW} | docker login -u ${DOCKERHUB_CREDENTIALS_USR} --password-stdin
-                    docker push ${IMAGE_NAME}:latest
+                    echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
                     """
                 }
             }
         }
 
-        stage('Deploy to Kubernetes') {
+        stage('Push Image to DockerHub') {
             steps {
-                script {
-                    // Use kubeconfig and update deployment image
-                    sh """
-                    export KUBECONFIG=${KUBE_CONFIG}
+                echo "Pushing image to DockerHub..."
 
-                    # Update Kubernetes deployment with new image
-                    kubectl set image deployment/tasteatlas-deployment tasteatlas=${IMAGE_NAME}:latest --record
+                sh """
+                docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}
+                docker push ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}
+                """
+            }
+        }
 
-                    # Check rollout status
-                    kubectl rollout status deployment/tasteatlas-deployment
-                    """
-                }
+        stage('Deploy Container Locally') {
+            steps {
+                echo "Running Docker Container..."
+
+                sh """
+                docker stop ${CONTAINER_NAME} || true
+                docker rm ${CONTAINER_NAME} || true
+                docker run -d -p 8080:80 --name ${CONTAINER_NAME} ${DOCKERHUB_USERNAME}/${IMAGE_NAME}:${IMAGE_TAG}
+                """
             }
         }
     }
 
     post {
         success {
-            echo "Pipeline completed successfully!"
+            echo "Application deployed successfully on port 8080 🎉"
         }
         failure {
-            echo "Pipeline failed. Check the logs for errors."
+            echo "Pipeline failed ❌ Check logs"
         }
     }
 }
