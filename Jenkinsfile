@@ -2,23 +2,24 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = "someshettydharshini/tasteatlas"
-        IMAGE_TAG  = "latest"
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')  // Docker Hub credentials
+        IMAGE_NAME = "someshettydharshini/tasteatlas"           // Docker Hub image name
+        KUBE_CONFIG = "/home/jenkins/.kube/config"             // Path to kubeconfig on Jenkins server
     }
 
     stages {
-
-        stage('Checkout') {
+        stage('Checkout Code') {
             steps {
-                git branch: 'main',
-                    url: 'https://github.com/SomeshettyDharshini/TasteAtlas.git'
+                // Pull code from GitHub
+                git branch: 'main', url: 'https://github.com/someshettydharshini/tasteatlas.git'
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    docker.build("${IMAGE_NAME}:${IMAGE_TAG}")
+                    // Build Docker image
+                    sh "docker build -t ${IMAGE_NAME}:latest ."
                 }
             }
         }
@@ -26,32 +27,39 @@ pipeline {
         stage('Push Docker Image') {
             steps {
                 script {
-                    docker.withRegistry(
-                        'https://index.docker.io/v1/',
-                        'dockerhub-creds'
-                    ) {
-                        docker.image("${IMAGE_NAME}:${IMAGE_TAG}").push()
-                    }
+                    // Login to Docker Hub and push image
+                    sh """
+                    echo ${DOCKERHUB_CREDENTIALS_PSW} | docker login -u ${DOCKERHUB_CREDENTIALS_USR} --password-stdin
+                    docker push ${IMAGE_NAME}:latest
+                    """
                 }
             }
         }
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh """
-                kubectl apply -f deployment.yaml
-                kubectl apply -f service.yaml
-                """
+                script {
+                    // Use kubeconfig and update deployment image
+                    sh """
+                    export KUBECONFIG=${KUBE_CONFIG}
+
+                    # Update Kubernetes deployment with new image
+                    kubectl set image deployment/tasteatlas-deployment tasteatlas=${IMAGE_NAME}:latest --record
+
+                    # Check rollout status
+                    kubectl rollout status deployment/tasteatlas-deployment
+                    """
+                }
             }
         }
     }
 
     post {
         success {
-            echo "✅ Application successfully deployed to Kubernetes"
+            echo "Pipeline completed successfully!"
         }
         failure {
-            echo "❌ Pipeline failed"
+            echo "Pipeline failed. Check the logs for errors."
         }
     }
 }
